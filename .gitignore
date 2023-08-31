@@ -1,0 +1,10 @@
+# JetBrains
+.idea/
+
+# Project
+logs/
+
+local/
+target/
+
+file-sync
