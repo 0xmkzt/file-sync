@@ -26,10 +26,16 @@ var (
 
 	syncMap = sync.Map{}
 
-	expireTime = time.Hour * 6
+	expireTime = time.Hour * 1
 )
 
-func walkSyncMap(key, value interface{}) bool {
+func walkSyncMapForDelete(key, value interface{}) bool {
+	syncMap.Delete(key)
+
+	return true
+}
+
+func walkSyncMapForPrint(key, value interface{}) bool {
 	logger.Info(fmt.Sprintf("Get file from local, %v,%v", key, value))
 
 	return true
@@ -136,7 +142,8 @@ func deleteLocalFile(path string, info os.FileInfo, err error) error {
 	}
 
 	modTime := info.ModTime()
-	if !modTime.Before(time.Now().Add(-expireTime)) {
+	realExpireTime := expireTime + time.Minute*30
+	if !modTime.Before(time.Now().Add(-realExpireTime)) {
 		return nil
 	}
 	if !info.IsDir() {
@@ -146,7 +153,7 @@ func deleteLocalFile(path string, info os.FileInfo, err error) error {
 				return err
 			}
 			syncMap.Delete(fileName)
-			logger.Info(fmt.Sprintf("Delete file(%v): %v, %v(%v)", fileName, path, modTime, expireTime))
+			logger.Info(fmt.Sprintf("Delete file(%v): %v, %v(%v)", fileName, path, modTime, realExpireTime))
 
 		}
 	}
@@ -175,12 +182,13 @@ func run() {
 	logger.Info("Run sync...")
 
 	if toRefreshLocalFile() {
+		syncMap.Range(walkSyncMapForDelete)
 		// Get local file
 		if err := filepath.Walk(localPath, getLocalFile); err != nil {
 			logger.Error(fmt.Sprintf("Get local file failed, %v", err.Error()))
 			return
 		}
-		syncMap.Range(walkSyncMap)
+		syncMap.Range(walkSyncMapForPrint)
 	}
 
 	// Copy target file
