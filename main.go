@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -14,8 +15,8 @@ import (
 )
 
 var (
-	localPath  = "/path/d1"
-	targetPath = "/path/d2"
+	localPath  = "/path/local"
+	targetPath = "/path/target"
 
 	//
 	targetFileName = "application.log"
@@ -207,9 +208,46 @@ func run() {
 	logger.Info("Run end")
 }
 
+func parseArgs() {
+
+	flag.StringVar(&localPath, "localPath", "", "")
+	flag.StringVar(&targetPath, "targetPath", "", "")
+
+	flag.Parse()
+
+	if localPath == "" || targetPath == "" {
+
+	}
+
+	for _, path := range [2]string{localPath, targetPath} {
+		if path == "" {
+			fmt.Println("Run failed, `localPath` and `targetPath` must be set")
+			os.Exit(1)
+		}
+
+		_, err := os.Stat(path)
+
+		if err == nil {
+			continue
+		} else if os.IsNotExist(err) {
+			fmt.Printf("Path not exist, %v\n", path)
+			os.Exit(1)
+		} else {
+			fmt.Println("Run error. \n", err)
+			os.Exit(1)
+		}
+	}
+}
+
 func main() {
+	parseArgs()
+
+	fmt.Println("localPath =", localPath)
+	fmt.Println("targetPath =", targetPath)
+	fmt.Println("Run ...")
+
 	for {
 		run()
-		time.Sleep(time.Second * 2)
+		time.Sleep(time.Second * 1)
 	}
 }
