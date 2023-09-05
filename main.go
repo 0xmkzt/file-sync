@@ -33,6 +33,7 @@ var (
 
 func walkSyncMapForDelete(key, value interface{}) bool {
 	syncMap.Delete(key)
+
 	logger.Info(fmt.Sprintf("Delete key from map, %v:%v", key, value))
 
 	return true
@@ -65,6 +66,7 @@ func copyFile(srcPath, dstPath string) bool {
 		logger.Info(fmt.Sprint("Copy file failed, ", err))
 		return false
 	}
+
 	return true
 }
 
@@ -155,8 +157,8 @@ func deleteLocalFile(path string, info os.FileInfo, err error) error {
 				return err
 			}
 			syncMap.Delete(fileName)
-			logger.Info(fmt.Sprintf("Delete file(%v): %v, %v(%v)", fileName, path, modTime, deleteExpireTime))
 
+			logger.Info(fmt.Sprintf("Delete file(%v): %v, %v(%v)", fileName, path, modTime, deleteExpireTime))
 		}
 	}
 
@@ -212,30 +214,20 @@ func parseArgs() {
 
 	flag.StringVar(&localPath, "localPath", "", "")
 	flag.StringVar(&targetPath, "targetPath", "", "")
-
 	flag.Parse()
-
-	if localPath == "" || targetPath == "" {
-
-	}
 
 	for _, path := range [2]string{localPath, targetPath} {
 		if path == "" {
-			fmt.Println("Run failed, `localPath` and `targetPath` must be set")
-			os.Exit(1)
-		}
-
-		_, err := os.Stat(path)
-
-		if err == nil {
+			fmt.Printf("Please set valid path\n\n")
+			flag.PrintDefaults()
+		} else if _, err := os.Stat(path); err == nil {
 			continue
 		} else if os.IsNotExist(err) {
 			fmt.Printf("Path not exist, %v\n", path)
-			os.Exit(1)
 		} else {
-			fmt.Println("Run error. \n", err)
-			os.Exit(1)
+			fmt.Println("Parse args failed. \n", err)
 		}
+		os.Exit(1)
 	}
 }
 
@@ -244,7 +236,7 @@ func main() {
 
 	fmt.Println("localPath =", localPath)
 	fmt.Println("targetPath =", targetPath)
-	fmt.Println("Run ...")
+	fmt.Println("Start ...")
 
 	for {
 		run()
