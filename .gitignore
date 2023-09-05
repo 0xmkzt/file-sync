@@ -4,7 +4,7 @@
 # Project
 logs/
 
-local/
-target/
+source_dir/
+target_dir/
 
 file-sync

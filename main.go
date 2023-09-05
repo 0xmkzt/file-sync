@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -15,129 +16,120 @@ import (
 )
 
 var (
-	localPath  = "/path/local"
-	targetPath = "/path/target"
+	sourceDir   = "/path/source_dir"
+	targetDir   = "/path/target_dir"
+	fileKeyPats = make([]string, 10)
 
-	//
-	targetFileName = "application.log"
-
-	refreshKey = "_refresh_key"
+	baseFileName = "application.log"
 
 	logger = log.GetLogger()
 
 	syncMap = sync.Map{}
 
-	copyExpireTime   = time.Hour * 1
 	deleteExpireTime = time.Hour * 3
 )
 
-func walkSyncMapForDelete(key, value interface{}) bool {
+func walkSyncMapForClear(key, value interface{}) bool {
 	syncMap.Delete(key)
-
-	logger.Info(fmt.Sprintf("Delete key from map, %v:%v", key, value))
 
 	return true
 }
 
 func walkSyncMapForPrint(key, value interface{}) bool {
-	logger.Info(fmt.Sprintf("Get file from local, %v,%v", key, value))
-
+	logger.Info(fmt.Sprintf("Load target file key, %v:%v", key, value))
 	return true
 }
 
-func copyFile(srcPath, dstPath string) bool {
-	logger.Info(fmt.Sprintf("Copy file, %v -> %v", srcPath, dstPath))
+func checkFileKey(fileKey string) bool {
+	for _, pat := range fileKeyPats {
+		if strings.HasPrefix(fileKey, pat) {
+			return true
+		}
+	}
+	return false
+}
 
-	srcFile, err := os.Open(srcPath)
+func copyFile(sourcePath, targetPath string) bool {
+	logger.Info(fmt.Sprintf("Copy file, %v -> %v", sourcePath, targetPath))
+
+	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
-		logger.Info(fmt.Sprint("Open src file failed, ", err))
+		logger.Info(fmt.Sprint("Open source file failed, ", err))
 		return false
 	}
-	defer srcFile.Close()
+	defer sourceFile.Close()
 
-	dstFile, err := os.Create(dstPath)
+	targetFile, err := os.Create(targetPath)
 	if err != nil {
-		logger.Info(fmt.Sprint("Create dst file failed, ", err))
+		logger.Info(fmt.Sprint("Create target file failed, ", err))
 		return false
 	}
-	defer dstFile.Close()
+	defer targetFile.Close()
 
-	if _, err = io.Copy(dstFile, srcFile); err != nil {
-		logger.Info(fmt.Sprint("Copy file failed, ", err))
+	if _, err = io.Copy(targetFile, sourceFile); err != nil {
+		logger.Info(fmt.Sprint("Copy file error, ", err))
 		return false
 	}
-
 	return true
 }
 
-func getLocalFile(path string, info os.FileInfo, err error) error {
+func getTargetFile(path string, info os.FileInfo, err error) error {
 	if err != nil {
 		return nil
 	}
 
 	if !info.IsDir() {
 		fileName := filepath.Base(path)
-		if strings.HasSuffix(fileName, targetFileName) {
+		if strings.HasSuffix(fileName, baseFileName) {
 			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
 				syncMap.Store(fileName, stat.Size)
 			}
 		}
 	}
-
 	return nil
 }
 
-func copyTargetFile(path string, info os.FileInfo, err error) error {
+func copySourceFile(path string, info os.FileInfo, err error) error {
 	if err != nil {
 		return err
 	}
 
 	if !info.IsDir() {
 		fileName := filepath.Base(path)
-		dirName := filepath.Base(filepath.Dir(path))
+		parentDirName := filepath.Base(filepath.Dir(path))
 		stat, ok := info.Sys().(*syscall.Stat_t)
 		if ok {
 			fileSize := stat.Size
-			newFileName := fmt.Sprintf("%v@%v@%v", dirName, stat.Ino, fileName)
-			newPath := filepath.Join(localPath, newFileName)
-
-			_msg := fmt.Sprintf("target file(%v,%v): %v", newFileName, fileSize, path)
-
-			modTime := info.ModTime()
-			if modTime.Before(time.Now().Add(-copyExpireTime)) {
-				logger.Debug(fmt.Sprintf("Expired %v, %v(%v)", _msg, modTime, copyExpireTime))
+			fileKey := fmt.Sprintf("%v@%v@%v", parentDirName, stat.Ino, baseFileName)
+			if !checkFileKey(fileKey) {
 				return nil
 			}
 
-			toCopy := false
-			if _fileSize, ok := syncMap.Load(newFileName); ok {
-				_msg = fmt.Sprint("Exists ", _msg)
-				if _fileSize != fileSize {
-					toCopy = true
-					_msg = fmt.Sprintf("%v, File size changed", _msg)
-				} else {
-					_msg = fmt.Sprintf("%v, File size not change", _msg)
-				}
-				logger.Info(_msg)
+			_msg := fmt.Sprintf("source file(%v:%v)", fileKey, fileSize)
 
-			} else if fileName == targetFileName {
+			toCopy := false
+			if _fileSize, ok := syncMap.Load(fileKey); ok {
+				_fileSize, _ := _fileSize.(int64)
+				_msg = fmt.Sprintf("Exists target file(%v:%v), %v", fileKey, _fileSize, _msg)
+				if fileSize > _fileSize {
+					toCopy = true
+					logger.Info(fmt.Sprintf("%v, size changed", _msg))
+				} else if fileSize < _fileSize {
+					logger.Info(fmt.Sprintf("%v, size anormal", _msg))
+				}
+			} else if fileName == baseFileName {
 				toCopy = true
 				logger.Info(fmt.Sprint("New ", _msg))
-
-			} else {
-				logger.Debug(fmt.Sprint("Ignore ", _msg))
-
 			}
 
-			if toCopy && copyFile(path, newPath) {
-				syncMap.Store(newFileName, fileSize)
+			if toCopy && copyFile(path, filepath.Join(targetDir, fileKey)) {
+				syncMap.Store(fileKey, fileSize)
 			}
 
 		} else {
-			logger.Info("Get target file failed")
+			logger.Warn("Get source file failed")
 		}
 	}
-
 	return nil
 }
 
@@ -152,7 +144,7 @@ func deleteLocalFile(path string, info os.FileInfo, err error) error {
 	}
 	if !info.IsDir() {
 		fileName := filepath.Base(path)
-		if strings.HasSuffix(fileName, targetFileName) {
+		if strings.HasSuffix(fileName, baseFileName) {
 			if err := os.Remove(path); err != nil {
 				return err
 			}
@@ -165,45 +157,26 @@ func deleteLocalFile(path string, info os.FileInfo, err error) error {
 	return nil
 }
 
-func toRefreshLocalFile() bool {
-	newValue := time.Now().Second()
-	refresh := false
-	_, ok := syncMap.Load(refreshKey)
-	if !ok {
-		refresh = true
-	} else if newValue%5 == 0 {
-		refresh = true
-	}
-
-	if refresh {
-		syncMap.Range(walkSyncMapForDelete)
-		syncMap.Store(refreshKey, newValue)
-	}
-
-	return refresh
-}
-
 func run() {
 	logger.Info("Run sync...")
 
-	if toRefreshLocalFile() {
-		// Get local file
-		if err := filepath.Walk(localPath, getLocalFile); err != nil {
-			logger.Error(fmt.Sprintf("Get local file failed, %v", err.Error()))
-			return
-		}
-		syncMap.Range(walkSyncMapForPrint)
+	syncMap.Range(walkSyncMapForClear)
+	// Get target file
+	if err := filepath.Walk(targetDir, getTargetFile); err != nil {
+		logger.Error(fmt.Sprintf("Get target file failed, %v", err.Error()))
+		return
 	}
+	syncMap.Range(walkSyncMapForPrint)
 
-	// Copy target file
-	if err := filepath.Walk(targetPath, copyTargetFile); err != nil {
-		logger.Error(fmt.Sprintf("Copy target file failed, %v", err.Error()))
+	// Copy source file
+	if err := filepath.Walk(sourceDir, copySourceFile); err != nil {
+		logger.Error(fmt.Sprintf("Copy source file failed, %v", err.Error()))
 		return
 	}
 
-	// Delete local file
-	if err := filepath.Walk(localPath, deleteLocalFile); err != nil {
-		logger.Error(fmt.Sprintf("Delete local file failed, %v", err.Error()))
+	// Delete target file
+	if err := filepath.Walk(targetDir, deleteLocalFile); err != nil {
+		logger.Error(fmt.Sprintf("Delete target file failed, %v", err.Error()))
 		return
 	}
 
@@ -211,14 +184,16 @@ func run() {
 }
 
 func parseArgs() {
+	var fileKeyPats_ string
 
-	flag.StringVar(&localPath, "localPath", "", "")
-	flag.StringVar(&targetPath, "targetPath", "", "")
+	flag.StringVar(&sourceDir, "source_dir", "", "")
+	flag.StringVar(&targetDir, "target_dir", "", "")
+	flag.StringVar(&fileKeyPats_, "file_key_pats", "", "")
 	flag.Parse()
 
-	for _, path := range [2]string{localPath, targetPath} {
+	for _, path := range [2]string{sourceDir, targetDir} {
 		if path == "" {
-			fmt.Printf("Please set valid path\n\n")
+			fmt.Println("Please set valid dir")
 			flag.PrintDefaults()
 		} else if _, err := os.Stat(path); err == nil {
 			continue
@@ -229,17 +204,40 @@ func parseArgs() {
 		}
 		os.Exit(1)
 	}
+
+	fileKeyPats = strings.Split(fileKeyPats_, ",")
+
+	fmt.Println("source_dir =", sourceDir)
+	fmt.Println("target_dir =", targetDir)
+	fmt.Printf("file_key_pats = %v\n", fileKeyPats)
 }
 
 func main() {
 	parseArgs()
 
-	fmt.Println("localPath =", localPath)
-	fmt.Println("targetPath =", targetPath)
-	fmt.Println("Start ...")
+	fmt.Println("File-Sync start...")
 
+	shutdown := false
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-signalChan
+		fmt.Println("Shutdown by", sig)
+		shutdown = true
+	}()
+
+	logger.Info("File-Sync start...")
 	for {
+		if shutdown {
+			logger.Info("Shutdown ...")
+			break
+		}
+
 		run()
+
 		time.Sleep(time.Second * 1)
 	}
+
+	logger.Info("File-Sync end")
 }
