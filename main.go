@@ -26,6 +26,7 @@ var (
 
 	syncMap = sync.Map{}
 
+	copyExpireTime   = time.Hour
 	deleteExpireTime = time.Hour * 3
 )
 
@@ -118,6 +119,11 @@ func copySourceFile(path string, info os.FileInfo, err error) error {
 					logger.Info(fmt.Sprintf("%v, size anormal", _msg))
 				}
 			} else if fileName == baseFileName {
+				modTime := info.ModTime()
+				if modTime.Before(time.Now().Add(-copyExpireTime)) {
+					return nil
+				}
+
 				toCopy = true
 				logger.Info(fmt.Sprint("New ", _msg))
 			}
