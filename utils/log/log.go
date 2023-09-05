@@ -12,10 +12,10 @@ func init() {
 	writer := &lumberjack.Logger{
 		// TODO Set in the configuration file
 		Filename:   "logs/run.log",
-		MaxSize:    10, // MB
+		MaxSize:    30, // MB
 		MaxBackups: 10,
 		MaxAge:     7, // Days
-		Compress:   true,
+		Compress:   false,
 	}
 
 	core := zapcore.NewCore(
