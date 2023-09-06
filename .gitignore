@@ -3,6 +3,7 @@
 
 # Project
 logs/
+tests/
 
 source_dir/
 target_dir/

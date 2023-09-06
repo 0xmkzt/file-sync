@@ -55,22 +55,38 @@ func copyFile(sourcePath, targetPath string) bool {
 
 	sourceFile, err := os.Open(sourcePath)
 	if err != nil {
-		logger.Info(fmt.Sprint("Open source file failed, ", err))
+		logger.Error(fmt.Sprint("Open source file failed, ", err))
 		return false
 	}
 	defer sourceFile.Close()
 
-	targetFile, err := os.Create(targetPath)
+	targetFile, err := os.OpenFile(targetPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		logger.Info(fmt.Sprint("Create target file failed, ", err))
+		logger.Error(fmt.Sprint("Create target file failed, ", err))
 		return false
 	}
 	defer targetFile.Close()
 
-	if _, err = io.Copy(targetFile, sourceFile); err != nil {
-		logger.Info(fmt.Sprint("Copy file error, ", err))
+	targetFileStat, err := targetFile.Stat()
+	if err != nil {
+		logger.Error(fmt.Sprint("Create target file failed, ", err))
 		return false
 	}
+
+	offset := targetFileStat.Size()
+	_, err = sourceFile.Seek(offset, io.SeekStart)
+	if err != nil {
+		logger.Error(fmt.Sprintf("Seek(%v) source file failed, %v", offset, err))
+		return false
+	}
+
+	n, err := io.Copy(targetFile, sourceFile)
+	if err != nil {
+		logger.Error(fmt.Sprint("Copy file error, ", err))
+		return false
+	}
+	logger.Info(fmt.Sprintf("Copy stats, offset: %v, n: %v", offset, n))
+
 	return true
 }
 
