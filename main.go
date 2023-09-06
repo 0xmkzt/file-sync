@@ -16,6 +16,8 @@ import (
 )
 
 var (
+	version = "1.0.0"
+
 	sourceDir   = "/path/source_dir"
 	targetDir   = "/path/target_dir"
 	fileKeyPats = make([]string, 10)
@@ -208,6 +210,11 @@ func run() {
 func parseArgs() {
 	var fileKeyPats_ string
 
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "[Version: %v] Usage of %s:\n\n", version, os.Args[0])
+		flag.PrintDefaults()
+	}
+
 	flag.StringVar(&sourceDir, "source_dir", "", "")
 	flag.StringVar(&targetDir, "target_dir", "", "")
 	flag.StringVar(&fileKeyPats_, "file_key_pats", "", "")
@@ -229,6 +236,8 @@ func parseArgs() {
 
 	fileKeyPats = strings.Split(fileKeyPats_, ",")
 
+	fmt.Printf("================================= Parse args(Version:%v) %v =================================\n",
+		version, time.Now())
 	fmt.Println("source_dir =", sourceDir)
 	fmt.Println("target_dir =", targetDir)
 	fmt.Printf("file_key_pats = %v\n", fileKeyPats)
