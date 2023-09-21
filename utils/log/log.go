@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -8,10 +9,10 @@ import (
 
 var logger *zap.Logger
 
-func init() {
+func Init(logName string) *zap.Logger {
 	writer := &lumberjack.Logger{
 		// TODO Set in the configuration file
-		Filename:   "logs/run.log",
+		Filename:   fmt.Sprintf("logs/%v", logName),
 		MaxSize:    30, // MB
 		MaxBackups: 10,
 		MaxAge:     7, // Days
@@ -25,6 +26,7 @@ func init() {
 		zapcore.InfoLevel,
 	)
 	logger = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zap.ErrorLevel))
+	return logger
 }
 
 func newEncoder() zapcore.Encoder {
@@ -42,8 +44,4 @@ func newEncoder() zapcore.Encoder {
 		EncodeDuration: zapcore.SecondsDurationEncoder,
 		EncodeCaller:   zapcore.ShortCallerEncoder,
 	})
-}
-
-func GetLogger() *zap.Logger {
-	return logger
 }

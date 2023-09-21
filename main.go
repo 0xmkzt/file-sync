@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"go.uber.org/zap"
 	"io"
 	"os"
 	"os/signal"
@@ -18,18 +19,20 @@ import (
 var (
 	version = "1.0.0"
 
-	sourceDir   = "/path/source_dir"
-	targetDir   = "/path/target_dir"
-	fileKeyPats = make([]string, 10)
+	sourceDir      = "/path/source_dir"
+	targetDir      = "/path/target_dir"
+	fileKeyPats    = make([]string, 10)
+	defaultLogName = "run.log"
+	logName        = defaultLogName
 
 	baseFileName = "application.log"
-
-	logger = log.GetLogger()
 
 	syncMap = sync.Map{}
 
 	copyExpireTime   = time.Hour
 	deleteExpireTime = time.Hour * 3
+
+	logger *zap.Logger
 )
 
 func walkSyncMapForClear(key, value interface{}) bool {
@@ -218,6 +221,7 @@ func parseArgs() {
 	flag.StringVar(&sourceDir, "source_dir", "", "")
 	flag.StringVar(&targetDir, "target_dir", "", "")
 	flag.StringVar(&fileKeyPats_, "file_key_pats", "", "")
+	flag.StringVar(&logName, "log_name", "", "")
 	flag.Parse()
 
 	for _, path := range [2]string{sourceDir, targetDir} {
@@ -234,6 +238,10 @@ func parseArgs() {
 		os.Exit(1)
 	}
 
+	if logName == "" {
+		logName = defaultLogName
+	}
+
 	fileKeyPats = strings.Split(fileKeyPats_, ",")
 
 	fmt.Printf("================================= Parse args(Version:%v) %v =================================\n",
@@ -241,6 +249,7 @@ func parseArgs() {
 	fmt.Println("source_dir =", sourceDir)
 	fmt.Println("target_dir =", targetDir)
 	fmt.Printf("file_key_pats = %v\n", fileKeyPats)
+	fmt.Printf("log_name = %v\n", logName)
 }
 
 func main() {
@@ -248,6 +257,7 @@ func main() {
 
 	fmt.Println("File-Sync start...")
 
+	logger = log.Init(logName)
 	shutdown := false
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
